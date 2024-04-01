@@ -1,6 +1,54 @@
 import { fiedlAccessOnlyAdmins } from '../../lib/utils'
 import { PRODUCT_CATEGORIES } from '../../config'
 import { CollectionConfig } from 'payload/types'
+import { BeforeChangeHook } from 'payload/dist/collections/config/types'
+import { Product } from '../../payload.types'
+import { stripe } from '../../lib/stripe'
+
+const addUser: BeforeChangeHook<Product> = ({ req, data }) => {
+    const user = req.user
+
+    return { ...data, user: user.id }
+}
+
+const createProductInStripe = async (data: Product): Promise<Product> => {
+    const createdProduct = await stripe.products.create({
+        name: data.name,
+        description: data.description ?? '',
+        default_price_data: {
+            currency: 'USD',
+            unit_amount: Math.round(data.price! * 100),
+        },
+    })
+    return {
+        ...data,
+        stripeId: createdProduct.id,
+        priceId: createdProduct.default_price as string,
+    }
+}
+
+const updateProductInStripe = async (data: Partial<Product>) => {
+    const updatedProduct = await stripe.products.update(data.stripeId!, {
+        name: data.name,
+        default_price: data.priceId!,
+    })
+    return {
+        ...data,
+        stripeId: updatedProduct.id,
+        priceId: updatedProduct.default_price as string,
+    }
+}
+
+const createOrUpdateStripeProduct: BeforeChangeHook<Product> = async (args) => {
+    const data = args.data as Product
+    if (args.operation === 'create') {
+        return await createProductInStripe(data)
+    } else if (args.operation === 'update') {
+        return await updateProductInStripe(data)
+    } else {
+        return data
+    }
+}
 
 export const Products: CollectionConfig = {
     slug: 'products',
@@ -8,6 +56,9 @@ export const Products: CollectionConfig = {
         useAsTitle: 'name',
     },
     access: {},
+    hooks: {
+        beforeChange: [addUser, createOrUpdateStripeProduct],
+    },
     fields: [
         {
             name: 'user',
