@@ -2,8 +2,18 @@
 const nextConfig = {
     images: {
         remotePatterns: [
-            'localhost',
-            'ecommerce-website-production-a420.up.railway.app',
+            {
+                hostname: 'localhost',
+                protocol: 'http',
+                pathname: '**',
+                port: '3000',
+            },
+            {
+                hostname: 'ecommerce-website-production-a420.up.railway.app',
+                protocol: 'https',
+                port: '',
+                pathname: '**',
+            },
         ],
     },
 }
