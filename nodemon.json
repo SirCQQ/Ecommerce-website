@@ -1,6 +1,11 @@
 {
-  "watch": ["server.ts", "src/collection/**/*.ts", "src/trpc/index.ts"],
-  "exec": "ts-node --project ts.config.json src/server.ts -- -I",
-  "ext": "js ts",
-  "stdin": false
+    "watch": [
+        "src/server.ts",
+        "src/collection/**/*.ts",
+        "src/trpc/index.ts",
+        "src/webhooks.ts"
+    ],
+    "exec": "ts-node --project ts.config.json src/server.ts -- -I",
+    "ext": "js ts",
+    "stdin": false
 }

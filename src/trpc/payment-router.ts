@@ -1,23 +1,21 @@
 import { z } from 'zod'
-import { privateProcedure, publicProcedure, router } from './trpc'
+import { privateProcedure, router } from './trpc'
 import { TRPCError } from '@trpc/server'
 import { getPayloadClient } from '../get-payload'
 import { stripe } from '../lib/stripe'
 import type Stripe from 'stripe'
 
-export const paymetRouter = router({
+export const paymentRouter = router({
     createSession: privateProcedure
-        .input(
-            z.object({
-                productIds: z.array(z.string()),
-            })
-        )
+        .input(z.object({ productIds: z.array(z.string()) }))
         .mutation(async ({ ctx, input }) => {
             const { user } = ctx
             let { productIds } = input
+
             if (productIds.length === 0) {
                 throw new TRPCError({ code: 'BAD_REQUEST' })
             }
+
             const payload = await getPayloadClient()
 
             const { docs: products } = await payload.find({
@@ -29,16 +27,15 @@ export const paymetRouter = router({
                 },
             })
 
-            const filteredProducts = products.filter((product) =>
-                Boolean(product.priceId)
+            const filteredProducts = products.filter((prod) =>
+                Boolean(prod.priceId)
             )
 
             const order = await payload.create({
                 collection: 'orders',
-
                 data: {
                     _isPaid: false,
-                    products: filteredProducts.map((product) => product.id),
+                    products: filteredProducts.map((prod) => prod.id),
                     user: user.id,
                 },
             })
@@ -53,22 +50,26 @@ export const paymetRouter = router({
                 })
             })
 
-            line_items.push({
-                price: process.env.STRIPE_SHIPPING_FEE_PRICE_ID,
-                quantity: 1,
-                adjustable_quantity: { enabled: false },
-            })
-            line_items.push({
-                price: process.env.STRIPE_TRANSACTION_FEE_PRICE_ID,
-                quantity: 1,
-                adjustable_quantity: { enabled: false },
-            })
+            if (process.env.STRIPE_SHIPPING_FEE_PRICE_ID) {
+                line_items.push({
+                    price: process.env.STRIPE_SHIPPING_FEE_PRICE_ID,
+                    quantity: 1,
+                    adjustable_quantity: { enabled: false },
+                })
+            }
+            if (process.env.STRIPE_TRANSACTION_FEE_PRICE_ID) {
+                line_items.push({
+                    price: process.env.STRIPE_TRANSACTION_FEE_PRICE_ID,
+                    quantity: 1,
+                    adjustable_quantity: { enabled: false },
+                })
+            }
 
             try {
                 const stripeSession = await stripe.checkout.sessions.create({
                     success_url: `${process.env.NEXT_PUBLIC_SERVER_URL}/thank-you?orderId=${order.id}`,
                     cancel_url: `${process.env.NEXT_PUBLIC_SERVER_URL}/cart`,
-                    payment_method_types: ['card'],
+                    payment_method_types: ['card', 'paypal'],
                     mode: 'payment',
                     metadata: {
                         userId: user.id,
@@ -76,9 +77,10 @@ export const paymetRouter = router({
                     },
                     line_items,
                 })
+
                 return { url: stripeSession.url }
-            } catch (error) {
-                console.log(error)
+            } catch (err) {
+                console.log(err)
                 return { url: null }
             }
         }),
@@ -91,9 +93,10 @@ export const paymetRouter = router({
 
             const { docs: orders } = await payload.find({
                 collection: 'orders',
-                depth: 1,
                 where: {
-                    id: { equals: orderId },
+                    id: {
+                        equals: orderId,
+                    },
                 },
             })
             if (!orders.length) {

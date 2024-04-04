@@ -16,7 +16,7 @@ export const stripeWebhookHandler = async (
     const webhookRequest = req as any as WebhookRequest
     const body = webhookRequest.rawBody
     const signature = req.headers['stripe-signature'] || ''
-
+    const payload = await getPayloadClient()
     let event
     try {
         event = stripe.webhooks.constructEvent(
@@ -33,17 +33,13 @@ export const stripeWebhookHandler = async (
                 }`
             )
     }
-
-    const session = event.data.object as Stripe.Checkout.Session
-
-    if (!session?.metadata?.userId || !session?.metadata?.orderId) {
-        return res
-            .status(400)
-            .send(`Webhook Error: No user present in metadata`)
-    }
-
     if (event.type === 'checkout.session.completed') {
-        const payload = await getPayloadClient()
+        const session = event.data.object as Stripe.Checkout.Session
+        if (!session?.metadata?.userId || !session?.metadata?.orderId) {
+            return res
+                .status(400)
+                .send(`Webhook Error: No user present in metadata`)
+        }
 
         const { docs: users } = await payload.find({
             collection: 'users',
@@ -55,7 +51,6 @@ export const stripeWebhookHandler = async (
         })
 
         const [user] = users
-
         if (!user)
             return res.status(404).json({ error: 'No such user exists.' })
 
@@ -70,7 +65,6 @@ export const stripeWebhookHandler = async (
         })
 
         const [order] = orders
-
         if (!order)
             return res.status(404).json({ error: 'No such order exists.' })
 
@@ -89,7 +83,7 @@ export const stripeWebhookHandler = async (
         // send receipt
         try {
             const data = await resend.emails.send({
-                from: 'DigitalHippo <hello@joshtriedcoding.com>',
+                from: 'DigitalHippo <onboarding@resend.dev>',
                 to: [user.email],
                 subject: 'Thanks for your order! This is your receipt.',
                 html: ReceiptEmailHtml({
@@ -104,6 +98,5 @@ export const stripeWebhookHandler = async (
             res.status(500).json({ error })
         }
     }
-
     return res.status(200).send()
 }
